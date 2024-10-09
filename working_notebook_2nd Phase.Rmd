@@ -1,0 +1,237 @@
+---
+title: "Henry Hub Spot Gas Prices"
+author: "Group 8"
+date: "sys.Date()"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 1
+  word_document:
+    toc: yes
+    toc_depth: '1'
+subtitle: 'STAT 626: Time Series Analysis'
+---
+
+```{r packages, echo=FALSE,warning=FALSE, message=FALSE}
+library(knitr)
+library(xts)
+library(astsa)
+library(lubridate)
+library(MASS)
+library(timeSeries)
+library(forecast)
+```
+
+```{r setup, include=FALSE}
+# Set Working Directory
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE) # Hide code
+# knitr::opts_knit$set(root.dir = "G:/My Drive/STAT/STAT 626/Group Project")
+getwd()
+```
+
+
+## Data Set Up 
+
+```{r ReadData}
+gas_data = read.csv("Henry_Hub_Natural_Gas_Spot_Price_Monthly.csv")
+# transpose of dataframe
+trans_gas <- t(gas_data)
+# converting the result to dataframe
+trans_gas <- as.data.frame(trans_gas)
+# reorder so 1997 is at the beginning
+dollars = ts(gas_data$Dollars)
+gas_data = gas_data[order(time(dollars),decreasing = T),]
+head(gas_data)
+summary(gas_data)
+plot(density(dollars))
+tsplot(dollars)
+
+```
+
+### Detrending Data (Not using)
+
+First attempt at a transformation using detrending. Detrending using linear regression to estimate a best fit line of the data. This line equation is then subtracted from the data to de-trend it. Then the data should look generally stationary. Our data doesn't sit as stationary around a trend thus this method does not work. 
+
+```{r Detrend}
+# Detrend series using linear regression
+fit = lm(dollars ~ time(dollars), na.action=NULL, data=gas_data) # trend only model
+tsplot(resid(fit), main="Detrended Gas Spot Prices")
+
+summary(fit)
+# intercept is 4.69
+# B1 is -0.02899
+# mut = 4.69 - 0.00298t
+fitValues = predict(fit,newdata=time(dollars))
+
+# fit abline over tsplot 
+gas<-ts(gas_data$Dollars,start = c(1997,1),freq=12)
+
+plot(gas, 
+     type="l", 
+     lwd=2, 
+     col="blue" ,
+     main = "Log and Differenced Natural Gas Price Index by EIA",
+     ylab= "Dollars",xlab = "Year",
+     xlim=c(1997,2023))
+lines(fitValues)
+
+par(mrow=c(1,2))
+tsplot(dollars,col = 2,main="Natual Gas Price Index by EIA")
+tsplot(dollars- fitValues,col=3,main="Detrended Natural Gas Price Index by EIA")
+```
+
+# Differencing Data Plot
+
+Differencing with an order of 1 subtracts the last observation (t-1) from the current (t) as the new obseration value at time t. The length dataset looses one value. We had 317 and how have 316. 
+
+```{r DifferencePlot}
+tsplot(diff(dollars))
+```
+
+## Log transformation Plot
+
+Log transformation reduces heteroskedasticity and extreme values
+
+```{r LogTransform}
+# mean and variance are much different after April 2009. Points to heteroskedasticity
+mean(dollars[1:146]) ; var(dollars[1:146])
+mean(dollars[147:length(dollars)]) ; var(dollars[147:length(dollars)])
+tsplot(log(dollars))
+
+
+par(mfrow=c(1,2))
+qqnorm(dollars);qqline(dollars)
+qqnorm(log(dollars),main="Log Normal Q-Q Plot");qqline(log(dollars))
+```
+
+
+## Differncing the log transformed data Plot
+
+```{r LogDiffTransform}
+tsplot(diff(log(dollars)),main="Log and Differenced Natural Gas Price Index",ylab="Differenced Log(Dollars)") # this reduces the effect of the extreme values observed at a couple times throughout the data.
+
+
+gas<-ts(diff(log(gas_data$Dollars)),start = c(1997,1),freq=12)
+plot(gas, type="l", lwd=2, col="blue" ,main = "Log and Differenced Natural Gas Price Index by EIA",
+     ylab= "Differenced Log(Dollars)",xlab = "Year",
+     xlim=c(1997,2023))
+```
+
+
+## ACF and PACF Plots 
+
+### Original Dataset 
+```{r OriginalACF}
+acf2(dollars, 36) # Original data
+```
+
+### Differenced Dataset 
+
+```{r DifferenceACF}
+acf2(diff(dollars), 36) # Log
+# The pact plot points to a AR(1) time series of the log transformation
+```
+
+### Log transformed Dataset
+
+```{r LogACF}
+acf2(log(dollars), 36) # Log
+```
+
+### Log and Differenced Time Series 
+
+```{r CombinationACF}
+acf2(diff(log(dollars)), 36,main="Series: Log and Differenced Natural Gas Index")
+qqnorm(diff(log(dollars))); qqline(diff(log(dollars)))
+```
+
+## Model Estimation
+
+### Auto ARMA package
+
+```{r}
+mod = auto.arima(diff(log(dollars)))
+summary(mod)
+plot(forecast(mod,h=5))
+```
+# Transformed Data with Yule-Walker, ols and mean, Sarima function and forecasting, With residuals
+```{r}
+data = diff(log(dollars))
+d.yw = ar.yw(data, order=1)
+exp(d.yw$x.mean)
+d.yw$ar # mean estimate
+exp(d.yw$var.pred) # error variance estimate
+names(d.yw)
+
+sarima(data, p=4, d=0, q=4)
+sarima.for(data, n.ahead=12, p=4,d=0,q=4)
+```
+# SARIMA using P,D,Q parameters
+```{r}
+sarima(data, p=1,d=0,q=1, P=1, D=0, Q=1)
+
+```
+
+```{r}
+ols = ar.ols(data, order.max=2, demean=FALSE, intercept=TRUE)
+ols$aic
+
+level = as.numeric(data[-1])
+lags = as.numeric(data[-length(data)])
+
+d.lm = lm(level ~ lags)
+
+summary(d.lm)
+
+```
+
+
+
+
+```{r}
+# Sample ACFs
+acf1(resid(fit), 48) # Detrended
+acf1(diff(dollars), 48) # Differenced
+
+mean(diff(dollars)) # drift
+
+lag.plot(dollars, 36)
+```
+
+
+
+
+
+
+
+
+
+```{r}
+# Check for multicollinearity between d and d^2
+plot(diff(dollars), diff(dollars)^2)
+cor(diff(dollars), diff(dollars)^2) # Collinear
+
+dollars_adj = dollars - mean(dollars)
+plot(dollars_adj, dollars_adj^2)
+cor(dollars_adj, dollars_adj^2) # Collinear
+```
+
+
+```{r}
+# linear regression - EXAMPLE 3.5 with multiple variables
+fit = lm(dollars~time(dollars), na.action=NULL)
+summary(fit) # Awful
+plot(fit)
+```
+
+
+```{r}
+# linear regression with Lagged Variables
+fitl = dynlm::dynlm(dollars ~ L(dollars,5))
+summary(fitl) # Awful
+tsplot(resid(fitl))
+
+### ALL SIGNS POINT TO AR CHAPTER 4 ###
+```
+
+

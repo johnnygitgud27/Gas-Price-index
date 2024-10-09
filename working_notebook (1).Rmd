@@ -1,0 +1,209 @@
+---
+title: "Henry Hub Spot Gas Prices"
+author: "Group 8"
+date: "06/24/2023"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 1
+  word_document:
+    toc: yes
+    toc_depth: '1'
+subtitle: 'STAT 626: Time Series Analysis'
+---
+
+```{r, echo=FALSE,warning=FALSE, message=FALSE}
+library(knitr)
+library(xts)
+library(astsa)
+library(timeSeries)
+library(forecast)
+```
+
+
+```{r}
+setwd("C:/Users/14699/Desktop/STAT 626 Summer 2023")
+gas_data = read.csv("Henry_Hub_Natural_Gas_Spot_Price_Monthly.csv")
+# transpose of dataframe
+trans_gas <- t(gas_data)
+# converting the result to dataframe
+trans_gas <- as.data.frame(trans_gas)
+dollars = gas_data$Dollars
+head(gas_data)
+summary(gas_data)
+plot(density(dollars))
+tsplot(dollars)
+abline(reg=lm(dollars~time(dollars)), col=4)
+```
+
+```{r}
+# Detrend series using linear regression
+fit = lm(dollars ~ time(dollars), na.action=NULL, data=gas_data)
+tsplot(resid(fit), main="Detrended Gas Spot Prices")
+
+
+# Differenced series 
+tsplot(diff(dollars), main="Differenced Gas Spot Prices")
+```
+
+## Here we're going to discuss which ones the transformations we've done (failed or looks good enough) Which is Log, diff(), and diff(log()). What they look like, residuals, normality assumption, and potential stationarity. 
+
+```{r}
+# Log Transform
+tsplot(log(dollars), main = "Log Transformed Gas Spot Prices")
+acf2(log(dollars), plot=TRUE)
+qqnorm(log(dollars)); qqline(log(dollars))
+lag.plot(log(dollars), 24)
+```
+
+```{r}
+# Log differenced series 
+tsplot(diff(log(dollars)), main="Log Differenced Gas Spot Prices")
+acf2(diff(log(dollars)), plot = TRUE)
+lag.plot(diff(log(dollars)), 24)
+qqnorm(diff(log(dollars)));qqline(diff(log(dollars)))
+```
+
+# Differencing
+```{r}
+tsplot(diff(dollars))
+acf2(diff(dollars), plot=TRUE)
+lag.plot(diff(dollars), 24)
+qqnorm(diff(dollars)); qqline(diff(dollars))
+
+```
+
+
+
+```{r}
+# Sample ACFs
+acf1(resid(fit), 48) # Detrended
+acf1(diff(dollars), 48) # Differenced
+
+mean(diff(dollars)) # drift
+
+lag.plot(dollars, 36)
+```
+
+
+
+```{r}
+dollars <- ts(dollars)
+acf1(diff(log(dollars)), 48) # Differenced
+plot(resid(diff(log(dollars))))
+```
+
+```{r}
+
+## acf2(dollars, 36) # Original data
+
+```
+
+```{r}
+dollars <- ts(dollars)
+acf2(log(dollars), 36) # Log
+
+```
+
+```{r}
+
+acf2(diff(dollars), 36) # Differenced
+
+```
+
+
+### DIFF Log. Transformation Model we would like to do explain successfully. Included are the acfs. Have decided to go on this diff(log()) transformation of the data
+```{r}
+tsplot(diff(log(dollars)))
+acf1(diff(log(dollars)), 60) # Log Differenced
+acf2(diff(log(dollars)))
+lag.plot(diff(log(dollars)), 36)
+
+qqnorm(diff(log(dollars)));qqline(diff(log(dollars)))
+## Not quite normal. Tails are quite a ways off which makes it seem not as normal
+```
+
+
+```{r}
+auto.arima(diff(log(dollars)))
+
+```
+
+
+# Here we need to make an ideal sarima/ARMA by experimenting by deciding how many lags for each 
+```{r}
+
+sarima(diff(log(dollars)), p=4,d=0,q=4)
+```
+
+```{r}
+# Log Transformation
+tsplot(dollars)
+tsplot(log(dollars))
+qqnorm(dollars); qqline(dollars) # Not normal
+qqnorm(log(dollars)); qqline(log(dollars)) # Still not normal
+```
+
+
+```{r}
+# Check for multicollinearity between d and d^2
+plot(diff(dollars), diff(dollars)^2)
+cor(diff(dollars), diff(dollars)^2) # Collinear
+
+dollars_adj = dollars - mean(dollars)
+plot(dollars_adj, dollars_adj^2)
+cor(dollars_adj, dollars_adj^2) # Collinear
+```
+
+
+```{r}
+# linear regression - EXAMPLE 3.5 with multiple variables
+fit = lm(dollars~time(dollars), na.action=NULL)
+summary(fit) # Awful
+
+
+# Difference
+```
+
+
+```{r}
+#attempting lin reg with lagged using
+fit2 = dynlm::dynlm(diff(log(dollars))~time(diff(log(dollars))), na.action=NULL)
+summary(fit2)
+
+# linear regression with Lagged Variables
+fitl = dynlm::dynlm(dollars ~ L(dollars,5))
+summary(fitl) # Awful
+tsplot(resid(fitl))
+
+### ALL SIGNS POINT TO AR CHAPTER 4 ###
+
+```
+
+## Corrected Data frame of Gas Prices
+
+```{r}
+setwd("C:/Users/14699/Desktop/STAT 626 Summer 2023")
+gas_data2 = read.csv("Henry_Hub_Natural_Gas_Spot_Price.csv")
+gas_data2$Price = gas_data2$Henry.Hub.Natural.Gas.Spot.Price.Dollars.per.Million.Btu
+gas_data2$Price = as.numeric(gas_data2$Price)
+# transpose of dataframe
+trans_gas2 <- t(gas_data2)
+# converting the result to dataframe
+trans_gas2 <- as.data.frame(trans_gas2)
+# calculating reverse of dataframe
+rev_gasframe <- rev(trans_gas2)
+# transpose of reverse dataframe
+rev_gasframe <- t(rev_gasframe)
+# converting the result to dataframe
+new_gas <- as.data.frame(rev_gasframe)
+## View(new_gas) ## Ideally Ordered in normal Ascending timeline
+plot(new_gas$Price,col="blue", type = "l", ylab = "Dollars per Million BTU",
+       xlab = "Months since Jan 1997", main = "Natural Gas Price Index by EIA")
+price = new_gas$Price
+abline(reg=lm(new_gas$Price~time(new_gas$Price)), col=4)
+```
+
+
+
+
